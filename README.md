@@ -124,6 +124,7 @@ Command | Shortcut | Symbolic alias | Description
 `Last` | `L` | `>>|` | Go to last build of last slide
 `run` | `r` | `!!` | Execute code that appears on slide
 `blank` | `b` | | Blank screen
+`printAll` | `pa` | | Save all slides as HTML (requires `ansifilter`)
 `help` | `h` | `?` | This help message
 
 ### Separators and delimiters
