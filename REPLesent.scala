@@ -17,21 +17,30 @@ case class REPLesent(
   width: Int = 0
 , height: Int = 0
 , source: String = "REPLesent.txt"
-, slideCounter: Boolean = false
-, slideTotal: Boolean = false
-, intp: scala.tools.nsc.interpreter.IMain = null
+, showDate: Boolean = true
+, slideCounter: Boolean = true
+, showLineNumbers: Boolean = true
+, intp: scala.tools.nsc.interpreter.IMain = $intp
 ) {
   import java.io.File
+  import java.text.SimpleDateFormat
+  import java.util.Date
   import scala.util.matching.Regex
   import scala.util.{ Try, Success, Failure }
 
   private case class Config(
-    top: String = "*"
-  , bottom: String = "*"
-  , sinistral: String = "* "
-  , dextral: String = " *"
+    top: String = "─"
+  , bottom: String = "─"
+  , sinistral: String = "│ "
+  , dextral: String = " │"
+  , topLeft: String = "╭"
+  , topRight: String = "╮"
+  , bottomLeft: String = "╰"
+  , bottomRight: String = "╯"
   , newline: String = System.lineSeparator
   , whiteSpace: String = " "
+  , lnToken: String = "LN │"
+  , dateFormatter: SimpleDateFormat = new SimpleDateFormat("EEE, d MMM yyyy")
   , private val width: Int
   , private val height: Int
   ) {
@@ -63,8 +72,10 @@ case class REPLesent(
       t + s.take(screenWidth - t.length)
     }
 
-    val topRow = fill(top) + newline
-    val bottomRow = fill(bottom)
+    val fillTop = fill(top)
+    val fillBottom = fill(bottom)
+    val topRow = topLeft + fillTop.slice(1, fillTop.length - 1) + topRight + newline
+    val bottomRow = bottomLeft + fillBottom.slice(1, fillBottom.length - 1) + bottomRight
 
     val verticalSpace = screenHeight - 3 // accounts for header, footer, and REPL prompt
     val horizontalSpace = screenWidth - sinistral.length - dextral.length
@@ -76,6 +87,8 @@ case class REPLesent(
   }
 
   private val config = Config(width = width, height = height)
+
+  private val date: String = config.dateFormatter.format(new Date())
 
   private case class Line(content: String, length: Int, private val style: Line.Style) {
     override def toString: String = content
@@ -102,7 +115,7 @@ case class REPLesent(
       private val ansiBegin = RESET.head
       private val ansiEnd = RESET.last
 
-      private val defaultPattern = Line("-")
+      private val defaultPattern = Line("─")
 
       def apply(line: Line, margin: Int): String = {
         // Provides a default pattern if none was specified
@@ -298,12 +311,24 @@ case class REPLesent(
 
     private def footer: Line = {
       val sb = StringBuilder.newBuilder
-      if (slideCounter) {
-        sb ++= ">> " + (slideCursor + 1)
 
-        if (slideTotal) sb ++= "/" + slides.size
-
+      if (showDate) {
+        sb ++= "<< " + date
         sb ++= " "
+      }
+
+      if (slideCounter && !showDate) {
+        sb ++= ">> " + (slideCursor + 1)
+        sb ++= "/" + slides.size
+        sb ++= " "
+      }
+
+      if (slideCounter && showDate) {
+        val t = config.whiteSpace * config.screenWidth
+        val currSlide = slideCursor + 1
+        val totalSlides = slides.size
+        sb ++= t.slice(3 + date.length, t.length - (currSlide.toString.length + totalSlides.toString.length) - 3) + currSlide
+        sb ++= "/" + totalSlides
       }
 
       Line(sb.mkString)
@@ -413,14 +438,13 @@ case class REPLesent(
     object CodeHandler extends LineHandler {
       private val patterns: Seq[(String, Regex)] = {
         val number: Regex = {
-          val hex = "(?:0[xX][0-9A-Fa-f]+)"
           val decimal = "(?:[1-9][0-9]*|0)"
+          val hex = "(?:0[xX][0-9A-Fa-f]+)"
           val long = s"(?:${decimal}[DFLdfl])"
           val float = s"(?:${decimal}\\.${decimal}[DFdf])"
           val eNotation = s"(?:${decimal}(?:\\.0?${decimal})?[eE][+\\-]?[0-9]+)"
           s"""\\b(?:${eNotation}|${hex}|${long}|${float}|${decimal})\\b""".r
         }
-
         val string: Regex = "(?:s?\"(?:\\\\\"|[^\"])*\")".r
         val reserved: Regex = (
           s"""\\b(?:null|contains|exists|filter|filterNot|find|flatMap|""" +
@@ -446,7 +470,7 @@ case class REPLesent(
         , "m" -> special
         , "g" -> typeSig
         , "r" -> number
-        , "y" -> syntax
+        , "b" -> syntax
         )
       }
 
@@ -468,7 +492,10 @@ case class REPLesent(
             .getOrElse(line)
         })
 
-        (Line("< " + formatted), Option(line))
+        showLineNumbers match {
+          case true => (Line("< " + config.lnToken + " " + formatted), Option(line))
+          case false => (Line("< " + formatted), Option(line))
+        }
       }
     }
 
@@ -489,10 +516,11 @@ case class REPLesent(
         copy(content = content :+ l, codeAcc = c.fold(codeAcc)(codeAcc :+ _))
       }
 
-      def pushBuild: Acc = copy(
-        builds = builds :+ content.size
-      , code = code :+ codeAcc.mkString(newline)
-      , codeAcc = IndexedSeq.empty
+      def pushBuild: Acc =
+        copy(
+          builds = builds :+ content.size
+        , code = code :+ codeAcc.mkString(newline)
+        , codeAcc = IndexedSeq.empty
       )
 
       def pushSlide: Acc = {
@@ -500,8 +528,23 @@ case class REPLesent(
           append("").pushSlide
         } else {
           val finalBuild = pushBuild
-          val slide = Slide(content, finalBuild.builds, finalBuild.code)
-
+          val newContent = showLineNumbers match {
+            case true => 
+              var currIndex = 1
+              content.map { 
+                case line if line.content.contains(config.lnToken) =>
+                  val replacement = currIndex match {
+                    case i if i < 10 => i + " "
+                    case i => i + ""
+                  }
+                  val newLine = line.copy(content = line.content.replaceFirst("LN", replacement))
+                  currIndex += 1
+                  newLine
+                case line => line
+              }
+            case false => content
+          }
+          val slide = Slide(newContent, finalBuild.builds, finalBuild.code)
           Acc(deck = deck :+ slide)
         }
       }
@@ -545,7 +588,7 @@ case class REPLesent(
 
     build.content foreach render
 
-    if (slideCounter && bottomPadding > 0) {
+    if ((slideCounter || showDate) && bottomPadding > 0) {
       sb ++= blankLine * (bottomPadding - 1)
       render(build.footer)
     } else {
@@ -567,6 +610,26 @@ case class REPLesent(
   private def reloadDeck(): Unit = {
     val curSlide = deck.currentSlideNumber
     deck = Deck(parseSource(source))
+    show(deck.jumpTo(curSlide))
+  }
+
+  import sys.process._
+  import java.nio.file.{Paths, Files}
+  import java.nio.charset.StandardCharsets
+  
+  private def printAllAsHTML(): Unit = {
+    val curSlide = deck.currentSlideNumber
+    val all = (0 until deck.slides.length).map { case i => 
+      val build = deck.jumpTo(i)
+      if(!build.isEmpty){
+      render(build.get)} else ""
+    }.mkString(config.newline)
+
+    Files.write(Paths.get("presentation.txt"), all.getBytes(StandardCharsets.UTF_8))
+    Seq("ansifilter", s"-d Presentation", s"--output=presentation.html", "--html", "-e utf8", "--font='Source Code Pro'", s"--input=presentation.txt").!!
+    val fileContents = new String(Files.readAllBytes(Paths.get("presentation.html")), StandardCharsets.UTF_8)
+    Files.write(Paths.get("presentation.html"), fileContents.replace("�","┛ ").getBytes(StandardCharsets.UTF_8))
+
     show(deck.jumpTo(curSlide))
   }
 
@@ -622,7 +685,14 @@ case class REPLesent(
   def blank: Unit = print(config.newline * config.screenHeight)
   def b: Unit = blank
 
+  def printAll: Unit = printAllAsHTML
+  def pa: Unit = printAll
+
   def help: Unit = print(helpMessage)
   def h: Unit = help
   def ? : Unit = help
 }
+
+val replesent = REPLesent()
+
+import replesent._
