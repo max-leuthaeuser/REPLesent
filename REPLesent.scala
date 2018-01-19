@@ -37,6 +37,7 @@ case class REPLesent(
   , topRight: String = "╮"
   , bottomLeft: String = "╰"
   , bottomRight: String = "╯"
+  , pagebreak: String = """<p style="page-break-after: always;">&nbsp;</p><p style="page-break-before: always;">&nbsp;</p>"""
   , newline: String = System.lineSeparator
   , whiteSpace: String = " "
   , lnToken: String = "LN │"
@@ -619,17 +620,25 @@ case class REPLesent(
   
   private def printAllAsHTML(): Unit = {
     val curSlide = deck.currentSlideNumber
+    deck = Deck(parseSource(source))
     val all = (0 until deck.slides.length).map { case i => 
       val build = deck.jumpTo(i)
       if(!build.isEmpty){
       render(build.get)} else ""
-    }.mkString(config.newline)
+    }.mkString("</pre>" + config.newline + config.pagebreak + config.newline + "<pre>")
 
     Files.write(Paths.get("presentation.txt"), all.getBytes(StandardCharsets.UTF_8))
     Seq("ansifilter", s"-d Presentation", s"--output=presentation.html", "--html", "-e utf8", "--font='Source Code Pro'", s"--input=presentation.txt").!!
     val fileContents = new String(Files.readAllBytes(Paths.get("presentation.html")), StandardCharsets.UTF_8)
-    Files.write(Paths.get("presentation.html"), fileContents.replace("�","┛ ").getBytes(StandardCharsets.UTF_8))
-
+    Files.write(
+      Paths.get("presentation.html"),
+       fileContents.replace("�","┛ ").
+       replace("&lt;","<").
+       replace("&gt;",">").
+       replace("&quot;", "\"").
+       replace("&amp;", "&").getBytes(StandardCharsets.UTF_8)
+     )
+    "rm presentation.txt".!
     show(deck.jumpTo(curSlide))
   }
 
