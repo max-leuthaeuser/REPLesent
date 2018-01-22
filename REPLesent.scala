@@ -552,6 +552,9 @@ case class REPLesent(width: Int = 0,
             content
           }
           val slide = Slide(newContent, finalBuild.builds, finalBuild.code)
+          if (slide.content.length >=config.screenHeight - 5) {
+            println(s"Slide ${deck.length + 1} might be too large to fit the current screen!")
+          }
           Acc(deck = deck :+ slide)
         }
       }
