@@ -20,6 +20,7 @@ case class REPLesent(
 , showDate: Boolean = true
 , slideCounter: Boolean = true
 , showLineNumbers: Boolean = true
+, padNewline: Boolean = true
 , intp: scala.tools.nsc.interpreter.IMain = $intp
 ) {
   import java.io.File
@@ -62,7 +63,7 @@ case class REPLesent(
         } getOrElse Array(0, 0)
 
         val screenWidth = Seq(width, w) find (_ > 0) getOrElse defaultWidth
-        val screenHeight = Seq(height, h) find (_ > 0) getOrElse defaultHeight
+        val screenHeight = Seq(height, h - (if (padNewline) 1 else 0)) find (_ > 0) getOrElse defaultHeight
 
         (screenWidth, screenHeight)
       }
@@ -425,18 +426,22 @@ case class REPLesent(
     }
   }
 
+  sealed trait Flags
+  case object NoExec extends Flags
+  case object Silent extends Flags
+
   private def parse(lines: Iterator[String]): IndexedSeq[Slide] = {
     sealed trait LineHandler {
-      def switch: LineHandler
-      def apply(line: String): (Line, Option[String])
+      def switch(flags: Seq[Flags]): LineHandler
+      def apply(line: String): (Option[Line], Option[String])
     }
 
     object LineHandler extends LineHandler {
-      def switch: LineHandler = CodeHandler
-      def apply(line: String): (Line, Option[String]) = (Line(line), None)
+      def switch(flags: Seq[Flags]): LineHandler = new CodeHandler(flags)
+      def apply(line: String): (Option[Line], Option[String]) = (Some(Line(line)), None)
     }
 
-    object CodeHandler extends LineHandler {
+    class CodeHandler(flags: Seq[Flags]) extends LineHandler {
       private val patterns: Seq[(String, Regex)] = {
         val number: Regex = {
           val decimal = "(?:[1-9][0-9]*|0)"
@@ -475,15 +480,11 @@ case class REPLesent(
         )
       }
 
-      def switch: LineHandler = LineHandler
+      def switch(flags: Seq[Flags]): LineHandler = LineHandler
 
-      def apply(line: String): (Line, Option[String]) = {
+      def apply(line: String): (Option[Line], Option[String]) = {
         val (colors, regexes) = patterns.unzip
-
-        // new Regex("(?:(a)|(b)|(c))") will produce
-        // m.subgroups List(null, "b", null) when applied on "b"
         val regex = new Regex(s"(?:(${regexes.mkString(")|(")}))")
-
         val formatted = regex.replaceAllIn(line, { m =>
           val colorIdx = m.subgroups.indexWhere(_ != null)
           colors.drop(colorIdx).take(1).headOption
@@ -492,11 +493,13 @@ case class REPLesent(
             })
             .getOrElse(line)
         })
-
-        showLineNumbers match {
-          case true => (Line("< " + config.lnToken + " " + formatted), Option(line))
-          case false => (Line("< " + formatted), Option(line))
+        val cline = showLineNumbers match {
+          case true => Line("< " + config.lnToken + " " + formatted)
+          case false => Line("< " + formatted)
         }
+        val formattedPart = Option(cline).filterNot(_ => flags.contains(Silent))
+        val codePart = Option(line).filterNot(_ => flags.contains(NoExec))
+        (formattedPart, codePart)
       }
     }
 
@@ -510,18 +513,17 @@ case class REPLesent(
     ) {
       import config.newline
 
-      def switchHandler: Acc = copy(handler = handler.switch)
+      def switchHandler(flags: Flags*): Acc = copy(handler = handler.switch(flags))
 
       def append(line: String): Acc = {
         val (l, c) = handler(line)
-        copy(content = content :+ l, codeAcc = c.fold(codeAcc)(codeAcc :+ _))
+        copy(content = content ++ l, codeAcc = c.fold(codeAcc)(codeAcc :+ _))
       }
 
-      def pushBuild: Acc =
-        copy(
-          builds = builds :+ content.size
-        , code = code :+ codeAcc.mkString(newline)
-        , codeAcc = IndexedSeq.empty
+      def pushBuild: Acc = copy(
+        builds = builds :+ content.size
+      , code = code :+ codeAcc.mkString(newline)
+      , codeAcc = IndexedSeq.empty
       )
 
       def pushSlide: Acc = {
@@ -554,12 +556,16 @@ case class REPLesent(
     val slideSeparator = "---"
     val buildSeparator = "--"
     val codeDelimiter = "```"
+    val noexecCodeDelimiter = "```noexec"
+    val silentCodeDelimiter = "```silent"
 
     val acc = lines.foldLeft(Acc()) { (acc, line) =>
       line match {
         case `slideSeparator` => acc.pushSlide
         case `buildSeparator` => acc.pushBuild
-        case `codeDelimiter` => acc.switchHandler
+        case `noexecCodeDelimiter` => acc.switchHandler(NoExec)
+        case `silentCodeDelimiter` => acc.switchHandler(Silent)
+        case `codeDelimiter` => acc.switchHandler()
         case _ => acc.append(line)
       }
     }.pushSlide
@@ -607,7 +613,10 @@ case class REPLesent(
     build foreach { b =>
       print(render(b))
     }
+    // Create a space for if the user enters "n\n", to keep the screen from jumping:
+    if (padNewline) print("\n\n\u001b[2A")
   }
+
   private def reloadDeck(): Unit = {
     val curSlide = deck.currentSlideNumber
     deck = Deck(parseSource(source))
