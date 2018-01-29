@@ -373,9 +373,9 @@ case class REPLesent(width: Int = 0,
       val code = currentSlide.code(buildCursor)
 
       if (repl.isEmpty) {
-        Console.err.print(s"No reference to REPL found. Please call with parameter intp=$$intp")
+        Console.err.print(s"No reference to REPL found. Please call with parameter intp=$$intp.")
       } else if (code.isEmpty) {
-        Console.err.print("No code for you")
+        Console.err.print("No code for you.")
       } else {
         repl foreach (_.interpret(code))
       }
@@ -397,11 +397,17 @@ case class REPLesent(width: Int = 0,
       |  Last          L      >>|   go to last build of last slide
       |  run           r      !!    execute code that appears on slide
       |  blank         b            blank screen
+      |  printAll      pa           save all slides as HTML (requires 'ansifilter')
       |  help          h      ?     print this help message""".stripMargin
 
   private val repl = Option(intp)
 
   private var deck = Deck(parseSource(source))
+
+  private def promptEnterKey(): Unit = {
+    println("Press \"ENTER\" to continue ...")
+    System.in.read()
+  }
 
   private def parseSource(path: String): IndexedSeq[Slide] = {
     Try {
@@ -420,7 +426,7 @@ case class REPLesent(width: Int = 0,
     } match {
       case Failure(e) =>
         e.printStackTrace()
-        Console.err.print(s"Sorry, could not parse $path. Quick, say something funny before anyone notices!")
+        Console.err.print(s"Sorry, could not parse '$path'. Quick, say something funny before anyone notices!")
         IndexedSeq.empty
       case Success(value) => value
     }
@@ -552,8 +558,11 @@ case class REPLesent(width: Int = 0,
             content
           }
           val slide = Slide(newContent, finalBuild.builds, finalBuild.code)
-          if (slide.content.length >=config.screenHeight - 5) {
-            println(s"Slide ${deck.length + 1} might be too large to fit the current screen!")
+          val slLength = slide.content.length
+          val sHeight = config.screenHeight - 5
+          if (slLength >= sHeight) {
+            println(s"Slide ${deck.length + 1} (height: $slLength) might be too large to fit the current screen (height: $sHeight)!")
+            promptEnterKey()
           }
           Acc(deck = deck :+ slide)
         }
@@ -615,7 +624,7 @@ case class REPLesent(width: Int = 0,
   }
 
   private def show(build: Option[Build]): Unit = {
-    if (build.isEmpty) Console.err.print("No slide for you")
+    if (build.isEmpty) Console.err.print("No slide for you.")
 
     build foreach { b =>
       print(render(b))
