@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-case class REPLesent(title: String,
+case class REPLesent(title: Option[String] = None,
+                     branding: Option[String] = None,
                      width: Int = 0,
                      height: Int = 0,
                      source: String = "REPLesent.txt",
                      showDate: Boolean = true,
-                     showHeader: Boolean = true,
                      slideCounter: Boolean = true,
                      showLineNumbers: Boolean = true,
                      padNewline: Boolean = true,
@@ -344,9 +344,16 @@ case class REPLesent(title: String,
 
     private def header: Line = {
       val sb = StringBuilder.newBuilder
+      val t = title getOrElse "[[no title defined]]"
+      val b = branding getOrElse "[[no branding defined]]"
 
-      sb ++= "| " + title
+      val margin = config.horizontalSpace - t.length
+      val left = margin / 2
+      val right = margin - left - b.length - 1
+      
+      sb ++=  "<< " + config.whiteSpace * left + t + config.whiteSpace * right
       sb ++= " "
+      sb ++= b
 
       Line(sb.mkString)
     }
@@ -619,7 +626,7 @@ case class REPLesent(title: String,
 
     sb ++= topRow
 
-    if(showHeader) {
+    if(title.isDefined || branding.isDefined) {
       render(build.header)
       sb ++= leftCross + fillBottom.slice(1, fillBottom.length - 1) + rightCross + newline
       sb ++= blankLine * (topPadding - 2)
@@ -765,6 +772,6 @@ case class REPLesent(title: String,
   def ? : Unit = help
 }
 
-val replesent = REPLesent(title="""Your Title here!""")
+val replesent = REPLesent()
 
 import replesent._
