@@ -13,10 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-case class REPLesent(width: Int = 0,
+case class REPLesent(title: String,
+                     width: Int = 0,
                      height: Int = 0,
                      source: String = "REPLesent.txt",
                      showDate: Boolean = true,
+                     showHeader: Boolean = true,
                      slideCounter: Boolean = true,
                      showLineNumbers: Boolean = true,
                      padNewline: Boolean = true,
@@ -35,6 +37,8 @@ case class REPLesent(width: Int = 0,
                             bottom: String = "─",
                             sinistral: String = "│ ",
                             dextral: String = " │",
+                            leftCross: String = "├",
+                            rightCross: String = "┤",
                             topLeft: String = "╭",
                             topRight: String = "╮",
                             bottomLeft: String = "╰",
@@ -43,47 +47,48 @@ case class REPLesent(width: Int = 0,
                             newline: String = System.lineSeparator,
                             whiteSpace: String = " ",
                             lnToken: String = "LN │",
-                            dateFormatter: SimpleDateFormat = new SimpleDateFormat("EEE, d MMM yyyy"),
-                            private val width: Int,
-                            private val height: Int) {
+                            dateFormatter: SimpleDateFormat = new SimpleDateFormat("EEE, d MMM yyyy")) {
 
-    val (screenWidth, screenHeight): (Int, Int) = {
+    private def calculateScreenSize(): (Int, Int) = {
       val defaultWidth = 80
       val defaultHeight = 25
 
-      if (width > 0 && height > 0) (width, height) else {
-        val Array(h, w) = Try {
-          val stty = Seq("sh", "-c", "stty size < /dev/tty").!!
-          stty.trim.split(' ') map (_.toInt)
-        } getOrElse Array(0, 0)
-
-        val screenWidth = Seq(width, w) find (_ > 0) getOrElse defaultWidth
-        val screenHeight = Seq(height, h - (if (padNewline) 1 else 0)) find (_ > 0) getOrElse defaultHeight
-
-        (screenWidth, screenHeight)
-      }
+      val Array(h, w) = Try {
+        val stty = Seq("sh", "-c", "stty size < /dev/tty").!!
+        stty.trim.split(' ') map (_.toInt)
+      } getOrElse Array(0, 0)
+      
+      (if(w > 0) w else defaultWidth, if(h - (if (padNewline) 1 else 0) > 0) h - (if (padNewline) 1 else 0) else defaultHeight)
     }
+
+    def recalculateScreenSize(): Unit = {
+      val (sw, sh) = calculateScreenSize()
+      this.screenWidth = sw
+      this.screenHeight = sh
+    }
+
+    var (screenWidth, screenHeight): (Int, Int) = calculateScreenSize()
 
     private def fill(s: String): String = if (s.isEmpty) s else {
       val t = s * (screenWidth / s.length)
       t + s.take(screenWidth - t.length)
     }
 
-    val fillTop = fill(top)
-    val fillBottom = fill(bottom)
-    val topRow = topLeft + fillTop.slice(1, fillTop.length - 1) + topRight + newline
-    val bottomRow = bottomLeft + fillBottom.slice(1, fillBottom.length - 1) + bottomRight
+    def fillTop: String = fill(top)
+    def fillBottom: String = fill(bottom)
+    def topRow: String = topLeft + fillTop.slice(1, fillTop.length - 1) + topRight + newline
+    def bottomRow: String = bottomLeft + fillBottom.slice(1, fillBottom.length - 1) + bottomRight
 
-    val verticalSpace = screenHeight - 3 // accounts for header, footer, and REPL prompt
-    val horizontalSpace = screenWidth - sinistral.length - dextral.length
+    def verticalSpace: Int = screenHeight - 3 // accounts for header, footer, and REPL prompt
+    def horizontalSpace: Int = screenWidth - sinistral.length - dextral.length
 
-    val blankLine = {
+    def blankLine: String = {
       val padding = if (dextral.isEmpty) "" else whiteSpace * horizontalSpace + dextral
       sinistral + padding + newline
     }
   }
 
-  private val config = Config(width = width, height = height)
+  private val config = Config()
 
   private val date: String = config.dateFormatter.format(new Date())
 
@@ -292,7 +297,7 @@ case class REPLesent(width: Int = 0,
   }
 
   // `size` and `maxLength` refer to the dimensions of the slide's last build
-  private case class Build(content: IndexedSeq[Line], size: Int, maxLength: Int, footer: Line)
+  private case class Build(content: IndexedSeq[Line], size: Int, maxLength: Int, header: Line, footer: Line)
 
   private case class Slide(content: IndexedSeq[Line], builds: IndexedSeq[Int], code: IndexedSeq[String]) {
     private val maxLength = content.maxBy(_.length).length
@@ -301,7 +306,7 @@ case class REPLesent(width: Int = 0,
 
     def hasBuild(n: Int): Boolean = builds.isDefinedAt(n)
 
-    def build(n: Int, footer: Line): Build = Build(content.take(builds(n)), content.size, maxLength, footer)
+    def build(n: Int, header: Line, footer: Line): Build = Build(content.take(builds(n)), content.size, maxLength, header, footer)
   }
 
   private case class Deck(slides: IndexedSeq[Slide]) {
@@ -337,6 +342,15 @@ case class REPLesent(width: Int = 0,
       Line(sb.mkString)
     }
 
+    private def header: Line = {
+      val sb = StringBuilder.newBuilder
+
+      sb ++= "| " + title
+      sb ++= " "
+
+      Line(sb.mkString)
+    }
+
     private def select(slide: Int = slideCursor, build: Int = 0): Option[Build] = {
       // "Stops" the cursor one position after/before the last/first slide to avoid
       // multiple next/previous calls taking it indefinitely away from the deck
@@ -345,7 +359,7 @@ case class REPLesent(width: Int = 0,
       buildCursor = build
 
       if (currentSlideIsDefined && currentSlide.hasBuild(buildCursor)) {
-        Some(currentSlide.build(buildCursor, footer))
+        Some(currentSlide.build(buildCursor, header, footer))
       } else None
     }
 
@@ -354,8 +368,6 @@ case class REPLesent(width: Int = 0,
     def jump(n: Int): Option[Build] = jumpTo(slideCursor + n)
 
     def nextBuild: Option[Build] = select(build = buildCursor + 1) orElse jump(1)
-
-    def redrawBuild: Option[Build] = select(build = buildCursor)
 
     def previousBuild: Option[Build] = select(build = buildCursor - 1) orElse {
       jump(-1) flatMap { _ =>
@@ -386,7 +398,6 @@ case class REPLesent(width: Int = 0,
     """Usage:
       |  next          n      >     go to next build/slide
       |  previous      p      <     go back to previous build/slide
-      |  redraw        z            redraw the current build/slide
       |  Next          N      >>    go to next slide
       |  Previous      P      <<    go back to previous slide
       |  i next        i n          advance i slides
@@ -405,7 +416,7 @@ case class REPLesent(width: Int = 0,
   private var deck = Deck(parseSource(source))
 
   private def promptEnterKey(): Unit = {
-    println("Press \"ENTER\" to continue ...")
+    println("""Press "ENTER" to continue ...""")
     System.in.read()
   }
 
@@ -559,7 +570,7 @@ case class REPLesent(width: Int = 0,
           }
           val slide = Slide(newContent, finalBuild.builds, finalBuild.code)
           val slLength = slide.content.length
-          val sHeight = config.screenHeight - 5
+          val sHeight = config.screenHeight - 7
           if (slLength >= sHeight) {
             println(s"Slide ${deck.length + 1} (height: $slLength) might be too large to fit the current screen (height: $sHeight)!")
             promptEnterKey()
@@ -607,12 +618,20 @@ case class REPLesent(width: Int = 0,
     }
 
     sb ++= topRow
-    sb ++= blankLine * topPadding
+
+    if(showHeader) {
+      render(build.header)
+      sb ++= leftCross + fillBottom.slice(1, fillBottom.length - 1) + rightCross + newline
+      sb ++= blankLine * (topPadding - 2)
+    } else {
+      sb ++= blankLine * topPadding
+    }
 
     build.content foreach render
 
     if ((slideCounter || showDate) && bottomPadding > 0) {
-      sb ++= blankLine * (bottomPadding - 1)
+      sb ++= blankLine * (bottomPadding - 2)
+      sb ++= leftCross + fillBottom.slice(1, fillBottom.length - 1) + rightCross + newline
       render(build.footer)
     } else {
       sb ++= blankLine * bottomPadding
@@ -634,6 +653,7 @@ case class REPLesent(width: Int = 0,
   }
 
   private def reloadDeck(): Unit = {
+    config.recalculateScreenSize()
     val curSlide = deck.currentSlideNumber
     deck = Deck(parseSource(source))
     show(deck.jumpTo(curSlide))
@@ -690,10 +710,6 @@ case class REPLesent(width: Int = 0,
 
   def < : Unit = previous
 
-  def redraw: Unit = show(deck.redrawBuild)
-
-  def z: Unit = redraw
-
   def reload: Unit = reloadDeck()
 
   def y: Unit = reload
@@ -749,6 +765,6 @@ case class REPLesent(width: Int = 0,
   def ? : Unit = help
 }
 
-val replesent = REPLesent()
+val replesent = REPLesent(title="""Your Title here!""")
 
 import replesent._
