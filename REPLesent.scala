@@ -344,12 +344,14 @@ case class REPLesent(title: Option[String] = None,
 
     private def header: Line = {
       val sb = StringBuilder.newBuilder
-      val t = title getOrElse "[[no title defined]]"
-      val b = branding getOrElse "[[no branding defined]]"
+      val t = title.getOrElse("[[no title defined]]")
+      val tLength = t.replaceAll("""\\.""", "").length
+      val b = branding.getOrElse("[[no branding defined]]")
+      val bLength = b.replaceAll("""\\.""", "").length
 
-      val margin = config.horizontalSpace - t.length
+      val margin = config.horizontalSpace - tLength
       val left = margin / 2
-      val right = margin - left - b.length - 1
+      val right = margin - left - bLength - 1
       
       sb ++=  "<< " + config.whiteSpace * left + t + config.whiteSpace * right
       sb ++= " "
@@ -772,6 +774,6 @@ case class REPLesent(title: Option[String] = None,
   def ? : Unit = help
 }
 
-val replesent = REPLesent()
+val replesent = REPLesent(title = Some("""Your title here"""), branding = Some("""Your logo here"""))
 
 import replesent._
