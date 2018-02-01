@@ -14,40 +14,40 @@
  * limitations under the License.
  */
 case class REPLesent(title: Option[String] = None,
-                     branding: Option[String] = None,
-                     width: Int = 0,
-                     height: Int = 0,
-                     source: String = "REPLesent.txt",
-                     showDate: Boolean = true,
-                     slideCounter: Boolean = true,
-                     showLineNumbers: Boolean = true,
-                     padNewline: Boolean = true,
-                     intp: scala.tools.nsc.interpreter.IMain = $intp) {
+  branding: Option[String] = None,
+  width: Int = 0,
+  height: Int = 0,
+  source: String = "REPLesent.txt",
+  showDate: Boolean = true,
+  slideCounter: Boolean = true,
+  showLineNumbers: Boolean = true,
+  padNewline: Boolean = true,
+  intp: scala.tools.nsc.interpreter.IMain = $intp) {
 
   import java.io.File
   import java.text.SimpleDateFormat
   import java.util.Date
   import scala.util.matching.Regex
-  import scala.util.{Try, Success, Failure}
+  import scala.util.{ Try, Success, Failure }
   import scala.sys.process._
-  import java.nio.file.{Paths, Files}
+  import java.nio.file.{ Paths, Files }
   import java.nio.charset.StandardCharsets
 
   private case class Config(top: String = "─",
-                            bottom: String = "─",
-                            sinistral: String = "│ ",
-                            dextral: String = " │",
-                            leftCross: String = "├",
-                            rightCross: String = "┤",
-                            topLeft: String = "╭",
-                            topRight: String = "╮",
-                            bottomLeft: String = "╰",
-                            bottomRight: String = "╯",
-                            pagebreak: String = """<p style="page-break-after: always;">&nbsp;</p><p style="page-break-before: always;">&nbsp;</p>""",
-                            newline: String = System.lineSeparator,
-                            whiteSpace: String = " ",
-                            lnToken: String = "LN │",
-                            dateFormatter: SimpleDateFormat = new SimpleDateFormat("EEE, d MMM yyyy")) {
+    bottom: String = "─",
+    sinistral: String = "│ ",
+    dextral: String = " │",
+    leftCross: String = "├",
+    rightCross: String = "┤",
+    topLeft: String = "╭",
+    topRight: String = "╮",
+    bottomLeft: String = "╰",
+    bottomRight: String = "╯",
+    pagebreak: String = """<p style="page-break-after: always;">&nbsp;</p><p style="page-break-before: always;">&nbsp;</p>""",
+    newline: String = System.lineSeparator,
+    whiteSpace: String = " ",
+    lnToken: String = "LN │",
+    dateFormatter: SimpleDateFormat = new SimpleDateFormat("EEE, d MMM yyyy")) {
 
     private def calculateScreenSize(): (Int, Int) = {
       val defaultWidth = 80
@@ -57,8 +57,8 @@ case class REPLesent(title: Option[String] = None,
         val stty = Seq("sh", "-c", "stty size < /dev/tty").!!
         stty.trim.split(' ') map (_.toInt)
       } getOrElse Array(0, 0)
-      
-      (if(w > 0) w else defaultWidth, if(h - (if (padNewline) 1 else 0) > 0) h - (if (padNewline) 1 else 0) else defaultHeight)
+
+      (if (w > 0) w else defaultWidth, if (h - (if (padNewline) 1 else 0) > 0) h - (if (padNewline) 1 else 0) else defaultHeight)
     }
 
     def recalculateScreenSize(): Unit = {
@@ -141,7 +141,8 @@ case class REPLesent(title: Option[String] = None,
           if (continue) c match {
             case `ansiEnd` if ansi => ansi = false
             case _ if ansi => // no-op
-            case `ansiBegin` => ansi = true; reset = RESET
+            case `ansiBegin` =>
+              ansi = true; reset = RESET
             case cx if Character.isHighSurrogate(cx) => // no-op
             case _ => remaining -= 1
           }
@@ -241,8 +242,7 @@ case class REPLesent(title: Option[String] = None,
       'Y' -> YELLOW_B,
       '!' -> REVERSED,
       '*' -> BOLD,
-      '_' -> UNDERLINED
-    )
+      '_' -> UNDERLINED)
 
     private def ansi(line: String): (String, Int) = {
       var drop = 0
@@ -250,12 +250,14 @@ case class REPLesent(title: Option[String] = None,
 
       val content: String = ansiEscape.replaceAllIn(line, m =>
         m.matched(1) match {
-          case c if ansiColor.contains(c) => drop += 2; reset = RESET; ansiColor(c)
-          case 's' => drop += 2; RESET
-          case '\\' => drop += 1; "\\\\"
+          case c if ansiColor.contains(c) =>
+            drop += 2; reset = RESET; ansiColor(c)
+          case 's' =>
+            drop += 2; RESET
+          case '\\' =>
+            drop += 1; "\\\\"
           case c: Char => "\\\\" + c
-        }
-      )
+        })
 
       (content + reset, drop)
     }
@@ -277,7 +279,8 @@ case class REPLesent(title: Option[String] = None,
 
       val content: String = emojiEscape.replaceAllIn(line, m => {
         m.group(1) match {
-          case e if emojis.contains(e) => drop += m.matched.length - 1; emojis(e)
+          case e if emojis.contains(e) =>
+            drop += m.matched.length - 1; emojis(e)
           case _ => m.matched
         }
       })
@@ -352,8 +355,8 @@ case class REPLesent(title: Option[String] = None,
       val margin = config.horizontalSpace - tLength
       val left = margin / 2
       val right = margin - left - bLength - 1
-      
-      sb ++=  "<< " + config.whiteSpace * left + t + config.whiteSpace * right
+
+      sb ++= "<< " + config.whiteSpace * left + t + config.whiteSpace * right
       sb ++= " "
       sb ++= b
 
@@ -484,8 +487,7 @@ case class REPLesent(title: Option[String] = None,
         val string: Regex = "(?:s?\"(?:\\\\\"|[^\"])*\")".r
         val reserved: Regex = (
           s"""\\b(?:null|contains|exists|filter|filterNot|find|flatMap|""" +
-            s"""flatten|fold|forall|foreach|getOrElse|map|orElse)\\b"""
-          ).r
+          s"""flatten|fold|forall|foreach|getOrElse|map|orElse)\\b""").r
         val special: Regex = s"""\\b(?:true|false|this)\\b""".r
         val typeSig: Regex = {
           val token: String => String = { limit => s"[$$_]$limit[A-Z][_$$A-Z0-9]$limit[\\w$$]$limit" }
@@ -495,19 +497,12 @@ case class REPLesent(title: Option[String] = None,
 
         val syntax: Regex = (
           s"""\\b(?:abstract|case|catch|class|def|do|else|extends|final|""" +
-            s"""finally|for|forSome|if|implicit|import|lazy|match|new|""" +
-            s"""object|override|package|private|protected|return|sealed|""" +
-            s"""super|throw|trait|try|type|val|var|while|with|yield)\\b"""
-          ).r
+          s"""finally|for|forSome|if|implicit|import|lazy|match|new|""" +
+          s"""object|override|package|private|protected|return|sealed|""" +
+          s"""super|throw|trait|try|type|val|var|while|with|yield)\\b""").r
 
         Seq[(String, Regex)](
-          "r" -> string
-          , "c" -> reserved
-          , "m" -> special
-          , "g" -> typeSig
-          , "r" -> number
-          , "b" -> syntax
-        )
+          "r" -> string, "c" -> reserved, "m" -> special, "g" -> typeSig, "r" -> number, "b" -> syntax)
       }
 
       def switch(flags: Seq[Flags]): LineHandler = LineHandler
@@ -535,11 +530,11 @@ case class REPLesent(title: Option[String] = None,
     }
 
     case class Acc(content: IndexedSeq[Line] = IndexedSeq.empty,
-                   builds: IndexedSeq[Int] = IndexedSeq.empty,
-                   deck: IndexedSeq[Slide] = IndexedSeq.empty,
-                   code: IndexedSeq[String] = IndexedSeq.empty,
-                   codeAcc: IndexedSeq[String] = IndexedSeq.empty,
-                   handler: LineHandler = LineHandler) {
+      builds: IndexedSeq[Int] = IndexedSeq.empty,
+      deck: IndexedSeq[Slide] = IndexedSeq.empty,
+      code: IndexedSeq[String] = IndexedSeq.empty,
+      codeAcc: IndexedSeq[String] = IndexedSeq.empty,
+      handler: LineHandler = LineHandler) {
 
       import config.newline
 
@@ -551,10 +546,7 @@ case class REPLesent(title: Option[String] = None,
       }
 
       def pushBuild: Acc = copy(
-        builds = builds :+ content.size
-        , code = code :+ codeAcc.mkString(newline)
-        , codeAcc = IndexedSeq.empty
-      )
+        builds = builds :+ content.size, code = code :+ codeAcc.mkString(newline), codeAcc = IndexedSeq.empty)
 
       def pushSlide: Acc = {
         if (content.isEmpty) {
@@ -628,7 +620,7 @@ case class REPLesent(title: Option[String] = None,
 
     sb ++= topRow
 
-    if(title.isDefined || branding.isDefined) {
+    if (title.isDefined || branding.isDefined) {
       render(build.header)
       sb ++= leftCross + fillBottom.slice(1, fillBottom.length - 1) + rightCross + newline
       sb ++= blankLine * (topPadding - 2)
@@ -687,8 +679,7 @@ case class REPLesent(title: Option[String] = None,
         replace("&lt;", "<").
         replace("&gt;", ">").
         replace("&quot;", "\"").
-        replace("&amp;", "&").getBytes(StandardCharsets.UTF_8)
-    )
+        replace("&amp;", "&").getBytes(StandardCharsets.UTF_8))
     "rm presentation.txt".!
     show(deck.jumpTo(curSlide))
   }
@@ -774,6 +765,6 @@ case class REPLesent(title: Option[String] = None,
   def ? : Unit = help
 }
 
-val replesent = REPLesent(title = Some("""Your title here"""), branding = Some("""Your logo here"""))
+val replesent = REPLesent(title = Some("""Your Title here"""), branding = Some("""Your Logo here"""))
 
 import replesent._
